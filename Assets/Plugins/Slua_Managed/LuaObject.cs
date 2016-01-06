@@ -89,7 +89,7 @@ namespace SLua
 		delegate void PushVarDelegate(IntPtr l, object o);
 		static Dictionary<Type, PushVarDelegate> typePushMap = new Dictionary<Type, PushVarDelegate>();
 
-		internal const int VersionNumber = 0x1004;
+		internal const int VersionNumber = 0x1007;
 
 		public static void init(IntPtr l)
 		{
@@ -132,8 +132,9 @@ local function index(ud,k)
         if tp=='function' then 
             return fun 
         elseif tp=='table' then
-			if fun[1] then
-				return fun[1](ud)
+			local f=fun[1]
+			if f then
+				return f(ud)
 			else
 				error('property '..k..' is write only')
 			end
@@ -157,6 +158,7 @@ return index
 			addMember (l, GetType);
 			LuaDLL.lua_setfield(l, LuaIndexes.LUA_REGISTRYINDEX, "__luabaseobject");
 
+			LuaArray.init(l);
 			LuaVarObject.init(l);
 
 			LuaDLL.lua_newtable(l);
@@ -251,7 +253,7 @@ return index
 			typePushMap[typeof(uint)] =
 				(IntPtr L, object o) =>
 				{
-					LuaDLL.lua_pushinteger(L, Convert.ToInt32(o));
+					LuaDLL.lua_pushnumber(L, Convert.ToUInt32(o));
 				};
 
 			typePushMap[typeof(short)] =
@@ -760,6 +762,19 @@ return index
 			oc.push(l, o);
 		}
 
+		public static void pushObject(IntPtr l, Array o)
+		{
+			ObjectCache oc = ObjectCache.get(l);
+			oc.push(l, o);
+		}
+
+		// lightobj is non-exported object used for re-get from c#, not for lua
+		public static void pushLightObject(IntPtr l, object t)
+		{
+			ObjectCache oc = ObjectCache.get(l);
+			oc.push(l, t, false);
+		}
+
 		public static int pushTry(IntPtr l)
 		{
 			if (!LuaState.get(l).isMainThread())
@@ -814,7 +829,7 @@ return index
 						if (t == typeof(LuaTable) || t.IsArray)
 							return true;
 						else if (t.IsValueType)
-							return luaTypeCheck(l, p, t.Name);
+							return true;//luaTypeCheck(l, p, t.Name);
 						else if (LuaDLL.luaS_subclassof(l, p, t.Name) == 1)
 							return true;
 						else
@@ -853,13 +868,14 @@ return index
 			return LuaDLL.luaS_checkluatype(l, p, null) == 1;
 		}
 
-		public static bool matchType(IntPtr l, int p, Type t1)
+		public static bool matchType<T>(IntPtr l, int p, T t1) where T:Type
 		{
 			LuaTypes t = LuaDLL.lua_type(l, p);
 			return matchType(l, p, t, t1);
 		}
 
-		public static bool matchType(IntPtr l, int total, int from, Type t1)
+		public static bool matchType<T1>(IntPtr l, int total, int from, T1 t1)
+			where T1 : Type
 		{
 			if (total - from + 1 != 1)
 				return false;
@@ -867,7 +883,9 @@ return index
 			return matchType(l, from, t1);
 		}
 
-		public static bool matchType(IntPtr l, int total, int from, Type t1, Type t2)
+		public static bool matchType<T1,T2>(IntPtr l, int total, int from, T1 t1, T2 t2)
+			where T1 : Type
+			where T2 : Type
 		{
 			if (total - from + 1 != 2)
 				return false;
@@ -875,7 +893,10 @@ return index
 			return matchType(l, from, t1) && matchType(l, from + 1, t2);
 		}
 
-		public static bool matchType(IntPtr l, int total, int from, Type t1, Type t2, Type t3)
+		public static bool matchType<T1, T2, T3>(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
 		{
 			if (total - from + 1 != 3)
 				return false;
@@ -883,7 +904,11 @@ return index
 			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3);
 		}
 
-		public static bool matchType(IntPtr l, int total, int from, Type t1, Type t2, Type t3, Type t4)
+		public static bool matchType<T1,T2,T3,T4>(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
 		{
 			if (total - from + 1 != 4)
 				return false;
@@ -891,20 +916,99 @@ return index
 			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4);
 		}
 
-		// more than 4 args
-		public static bool matchType(IntPtr l, int total, int from, params Type[] types)
+		public static bool matchType<T1, T2, T3, T4, T5>(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
+			where T5 : Type
 		{
-			if (total - from + 1 != types.Length)
+			if (total - from + 1 != 4)
 				return false;
 
-			for (int n = 0; n < types.Length; n++)
-			{
-				int p = n + from;
-				LuaTypes t = LuaDLL.lua_type(l, p);
-				if (!matchType(l, p, t, types[n]))
-					return false;
-			}
-			return true;
+			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4)
+				&& matchType(l, from + 4, t5);
+		}
+
+		public static bool matchType<T1, T2, T3, T4, T5, T6>
+			(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
+			where T5 : Type
+			where T6 : Type
+		{
+			if (total - from + 1 != 4)
+				return false;
+
+			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4)
+				&& matchType(l, from + 4, t5)
+				&& matchType(l, from + 5, t6);
+		}
+
+		public static bool matchType<T1, T2, T3, T4, T5, T6, T7>
+			(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
+			where T5 : Type
+			where T6 : Type
+			where T7 : Type
+		{
+			if (total - from + 1 != 4)
+				return false;
+
+			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4)
+				&& matchType(l, from + 4, t5)
+				&& matchType(l, from + 5, t6)
+				&& matchType(l, from + 6, t7);
+		}
+
+		public static bool matchType<T1, T2, T3, T4, T5, T6, T7, T8>
+			(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7, T8 t8)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
+			where T5 : Type
+			where T6 : Type
+			where T7 : Type
+			where T8 : Type
+		{
+			if (total - from + 1 != 4)
+				return false;
+
+			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4)
+				&& matchType(l, from + 4, t5)
+				&& matchType(l, from + 5, t6)
+				&& matchType(l, from + 6, t7)
+				&& matchType(l, from + 7, t8);
+		}
+
+
+		public static bool matchType<T1, T2, T3, T4, T5,T6,T7,T8,T9>
+			(IntPtr l, int total, int from, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5,T6 t6,T7 t7,T8 t8,T9 t9)
+			where T1 : Type
+			where T2 : Type
+			where T3 : Type
+			where T4 : Type
+			where T5 : Type
+			where T6 : Type
+			where T7 : Type
+			where T8 : Type
+			where T9 : Type
+		{
+			if (total - from + 1 != 4)
+				return false;
+
+			return matchType(l, from, t1) && matchType(l, from + 1, t2) && matchType(l, from + 2, t3) && matchType(l, from + 3, t4)
+				&& matchType(l, from + 4, t5)
+				&& matchType(l, from + 5, t6)
+				&& matchType(l, from + 6, t7)
+				&& matchType(l, from + 7, t8)
+				&& matchType(l, from + 8, t9);
 		}
 
 		public static bool matchType(IntPtr l, int total, int from, ParameterInfo[] pars)
@@ -957,14 +1061,26 @@ return index
 			return oc.get(l, p);
 		}
 
-		static public bool checkType(IntPtr l, int p, out Type[] t)
+		static public bool checkArray<T>(IntPtr l, int p, out T[] ta)
 		{
-			throw new NotSupportedException();
-		}
-
-		static public bool checkType(IntPtr l, int p, out Array t)
-		{
-			throw new NotSupportedException();
+			if (LuaDLL.lua_type(l, p) == LuaTypes.LUA_TTABLE)
+			{
+				int n = LuaDLL.lua_rawlen(l, p);
+				ta = new T[n];
+				for (int k = 0; k < n; k++)
+				{
+					LuaDLL.lua_rawgeti(l, p, k + 1);
+					ta[k]=(T)Convert.ChangeType(checkVar(l, -1),typeof(T));
+					LuaDLL.lua_pop(l, 1);
+				}
+				return true;
+			}
+			else
+			{
+				Array array = checkObj(l, p) as Array;
+				ta = array as T[];
+				return ta!=null;
+			}
 		}
 
 		static public bool checkParams<T>(IntPtr l, int p, out T[] pars) where T:class
@@ -1160,22 +1276,10 @@ return index
 			pushVar(l, o);
 		}
 
-
-		public static void pushValue(IntPtr l, object[] o)
+		public static void pushValue(IntPtr l, Array a)
 		{
-			if (o == null)
-			{
-				LuaDLL.lua_pushnil(l);
-				return;
-			}
-			LuaDLL.lua_createtable(l, o.Length, 0);
-			for (int n = 0; n < o.Length; n++)
-			{
-				pushValue(l, o[n]);
-				LuaDLL.lua_rawseti(l, -2, n + 1);
-			}
+			pushObject(l, a);
 		}
-
 
 		public static void pushVar(IntPtr l, object o)
 		{
@@ -1196,8 +1300,10 @@ return index
 			{
 				pushEnum(l, Convert.ToInt32(o));
 			}
+			else if (t.IsArray)
+				pushObject(l, (Array)o);
 			else
-				pushObject(l,o);
+				pushObject(l, o);
          
 		}
 
@@ -1325,6 +1431,13 @@ return index
 		{
 			LuaDLL.lua_pushboolean(l, true);
 			return 1;
+		}
+
+		static public int ok(IntPtr l, int retCount)
+		{
+			LuaDLL.lua_pushboolean(l, true);
+			LuaDLL.lua_insert(l, -(retCount + 1));
+			return retCount + 1;
 		}
 	}
 
